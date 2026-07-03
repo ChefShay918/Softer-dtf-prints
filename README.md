@@ -19,12 +19,20 @@ Then open the printed local URL in a browser.
 1. **Upload** a PNG or JPG.
 2. **Pick a fabric type** — Dark, Light, or Color. Dark/Color also generate a
    white underbase; Light skips it.
-3. **Tune the screen** — LPI (screen ruling), angle, max ink coverage (caps
+3. **Pick an export resolution** — 300 / 400 / 450 / 600 DPI. Raising this
+   re-renders the working canvas at proportionally more pixels and recomputes
+   the halftone cell size as `DPI / LPI` (the standard screen-ruling
+   relationship), so the dot pattern stays physically accurate at the new
+   resolution.
+4. **Tune the screen** — LPI (screen ruling), angle, max ink coverage (caps
    how solid heavy areas get), and underbase choke (shrinks the underbase a
    few pixels so it doesn't peek past the color layer).
-4. **Compare** the original vs. the halftone output with the drag slider.
-5. **Download** the color halftone layer and white underbase as separate
-   transparent PNGs, ready for a RIP or transfer workflow.
+5. **Compare** the original vs. the halftone output with the drag slider.
+6. **Download** the color halftone layer and white underbase as separate
+   transparent PNGs, ready for a RIP or transfer workflow. Each exported PNG
+   is tagged with a real `pHYs` DPI chunk matching the selected export
+   resolution, so opening it in Photoshop or a RIP shows the correct DPI
+   instead of the default 72.
 
 ## How the halftone is generated
 
@@ -49,6 +57,11 @@ synthetic test image and asserts that:
 - the underbase button disables itself for light fabric,
 - both PNG downloads produce non-trivial file sizes.
 
+`test/verify-dpi.js` checks that raising the export resolution to 600 DPI
+doubles the working canvas size versus 300 DPI, and that the downloaded PNG's
+embedded `pHYs` chunk reads back as exactly 600 DPI.
+
 ```bash
 node test/verify.js
+node test/verify-dpi.js
 ```

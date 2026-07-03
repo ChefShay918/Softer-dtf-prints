@@ -34,6 +34,17 @@
       </div>
 
       <div class="control-group">
+        <label for="dpi">Export Resolution</label>
+        <select id="dpi">
+          <option value="300" selected>300 DPI</option>
+          <option value="400">400 DPI</option>
+          <option value="450">450 DPI</option>
+          <option value="600">600 DPI</option>
+        </select>
+        <p class="hint">Higher DPI re-renders the halftone at more pixels and tags the exported PNGs with real DPI metadata.</p>
+      </div>
+
+      <div class="control-group">
         <label for="lpi">Screen Ruling — <span id="lpiVal">35</span> LPI</label>
         <input type="range" id="lpi" min="15" max="55" value="35" step="1">
       </div>

@@ -4,6 +4,7 @@
   const dropzone = document.getElementById('dropzone');
   const fabricBtns = document.querySelectorAll('.fabric-btn');
   const fabricHint = document.getElementById('fabricHint');
+  const dpiInput = document.getElementById('dpi');
   const lpiInput = document.getElementById('lpi');
   const lpiVal = document.getElementById('lpiVal');
   const angleInput = document.getElementById('angle');
@@ -33,7 +34,8 @@
 
   const state = {
     fabric: 'dark',
-    hasImage: false
+    hasImage: false,
+    img: null
   };
 
   function setFabric(fabric) {
@@ -58,6 +60,10 @@
   syncSliderLabel(angleInput, angleVal);
   syncSliderLabel(inkCapInput, inkCapVal);
   syncSliderLabel(chokeInput, chokeVal);
+
+  dpiInput.addEventListener('change', () => {
+    if (state.img) rebuildFromImage();
+  });
 
   browseBtn.addEventListener('click', () => fileInput.click());
   dropzone.addEventListener('click', (e) => {
@@ -89,17 +95,43 @@
     const reader = new FileReader();
     reader.onload = (e) => {
       const img = new Image();
-      img.onload = () => initFromImage(img);
+      img.onload = () => {
+        state.img = img;
+        initFromImage();
+      };
       img.src = e.target.result;
     };
     reader.readAsDataURL(file);
   }
 
-  function initFromImage(img) {
-    const maxDim = 1400;
+  // Base working resolution is tuned for a 300 DPI export; higher export
+  // DPI selections scale the working canvas up proportionally, and the
+  // halftone cell size (dpi / lpi) scales with it to stay physically accurate.
+  const BASE_MAX_DIM = 1400;
+  const MAX_WORKING_DIM = 3600;
+
+  function initFromImage() {
+    rebuildFromImage();
+    originalCanvas.style.display = 'block';
+    processedCanvas.style.display = 'block';
+    compareHandle.style.display = 'block';
+    compareSlider.style.display = 'block';
+    placeholderText.style.display = 'none';
+    processBtn.disabled = false;
+    state.hasImage = true;
+    runProcess();
+  }
+
+  function rebuildFromImage() {
+    const img = state.img;
+    const dpi = Number(dpiInput.value);
+    const maxDim = Math.min(MAX_WORKING_DIM, Math.round(BASE_MAX_DIM * (dpi / 300)));
+
     let w = img.width;
     let h = img.height;
-    const scale = Math.min(1, maxDim / Math.max(w, h));
+    // Always scale to the DPI-driven target size (up or down) so raising the
+    // export DPI actually yields more pixels, even for small source images.
+    const scale = maxDim / Math.max(w, h);
     w = Math.round(w * scale);
     h = Math.round(h * scale);
 
@@ -112,15 +144,7 @@
     octx.clearRect(0, 0, w, h);
     octx.drawImage(img, 0, 0, w, h);
 
-    originalCanvas.style.display = 'block';
-    processedCanvas.style.display = 'block';
-    compareHandle.style.display = 'block';
-    compareSlider.style.display = 'block';
-    placeholderText.style.display = 'none';
-    processBtn.disabled = false;
-
-    state.hasImage = true;
-    runProcess();
+    if (state.hasImage) runProcess();
   }
 
   function getPixel(data, w, h, x, y) {
@@ -130,11 +154,12 @@
     return [data[idx], data[idx + 1], data[idx + 2], data[idx + 3]];
   }
 
-  function generateHalftone(srcData, w, h, lpi, angleDeg, inkCap) {
+  function generateHalftone(srcData, w, h, dpi, lpi, angleDeg, inkCap) {
     const ctx = processedCanvas.getContext('2d');
     ctx.clearRect(0, 0, w, h);
 
-    const cellSize = Math.max(3, 400 / lpi);
+    // Standard halftone screen relationship: cell size in pixels = DPI / LPI.
+    const cellSize = Math.max(2, dpi / lpi);
     const theta = (angleDeg * Math.PI) / 180;
     const cos = Math.cos(theta);
     const sin = Math.sin(theta);
@@ -230,12 +255,13 @@
       const octx = originalCanvas.getContext('2d');
       const srcData = octx.getImageData(0, 0, w, h);
 
+      const dpi = Number(dpiInput.value);
       const lpi = Number(lpiInput.value);
       const angleDeg = Number(angleInput.value);
       const inkCap = Number(inkCapInput.value) / 100;
       const chokePx = Number(chokeInput.value);
 
-      generateHalftone(srcData, w, h, lpi, angleDeg, inkCap);
+      generateHalftone(srcData, w, h, dpi, lpi, angleDeg, inkCap);
 
       if (state.fabric !== 'light') {
         underbaseCanvas.width = w;
@@ -258,12 +284,62 @@
     compareHandle.style.left = `${value}%`;
   });
 
-  function downloadCanvas(canvas, filename) {
-    canvas.toBlob((blob) => {
-      const url = URL.createObjectURL(blob);
+  let crcTable = null;
+  function crc32(bytes) {
+    if (!crcTable) {
+      crcTable = new Uint32Array(256);
+      for (let n = 0; n < 256; n++) {
+        let c = n;
+        for (let k = 0; k < 8; k++) {
+          c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+        }
+        crcTable[n] = c >>> 0;
+      }
+    }
+    let crc = 0xFFFFFFFF;
+    for (let i = 0; i < bytes.length; i++) {
+      crc = crcTable[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+    }
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  }
+
+  // Inserts a pHYs chunk right after IHDR so the exported PNG carries real
+  // DPI metadata (Photoshop / RIP software reads this instead of assuming 72 DPI).
+  function withDpiMetadata(pngBytes, dpi) {
+    const ihdrEnd = 8 + 4 + 4 + 13 + 4; // signature + IHDR (length+type+data+crc)
+    const before = pngBytes.slice(0, ihdrEnd);
+    const after = pngBytes.slice(ihdrEnd);
+
+    const pxPerMeter = Math.round(dpi / 0.0254);
+    const typeAndData = new Uint8Array(13);
+    const tdView = new DataView(typeAndData.buffer);
+    typeAndData.set([0x70, 0x48, 0x59, 0x73], 0); // 'pHYs'
+    tdView.setUint32(4, pxPerMeter, false);
+    tdView.setUint32(8, pxPerMeter, false);
+    typeAndData[12] = 1; // unit: meters
+
+    const chunk = new Uint8Array(4 + 13 + 4);
+    new DataView(chunk.buffer).setUint32(0, 9, false); // data length
+    chunk.set(typeAndData, 4);
+    new DataView(chunk.buffer).setUint32(17, crc32(typeAndData), false);
+
+    const result = new Uint8Array(before.length + chunk.length + after.length);
+    result.set(before, 0);
+    result.set(chunk, before.length);
+    result.set(after, before.length + chunk.length);
+    return result;
+  }
+
+  function downloadCanvas(canvas, baseName) {
+    const dpi = Number(dpiInput.value);
+    canvas.toBlob(async (blob) => {
+      const buf = new Uint8Array(await blob.arrayBuffer());
+      const tagged = withDpiMetadata(buf, dpi);
+      const taggedBlob = new Blob([tagged], { type: 'image/png' });
+      const url = URL.createObjectURL(taggedBlob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = filename;
+      a.download = `${baseName}-${dpi}dpi.png`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -272,10 +348,10 @@
   }
 
   downloadColorBtn.addEventListener('click', () => {
-    downloadCanvas(processedCanvas, 'design-color-halftone.png');
+    downloadCanvas(processedCanvas, 'design-color-halftone');
   });
   downloadUnderbaseBtn.addEventListener('click', () => {
-    downloadCanvas(underbaseCanvas, 'design-white-underbase.png');
+    downloadCanvas(underbaseCanvas, 'design-white-underbase');
   });
 
   setFabric('dark');
