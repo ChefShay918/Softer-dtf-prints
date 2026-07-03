@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Softer DTF Prints — Halftone &amp; Underbase Tool</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <h1>Softer DTF Prints <span>Without Photoshop</span></h1>
+    <p>Upload your art, knock out heavy ink areas, and generate clean halftone dots right in your browser.</p>
+  </header>
+
+  <main class="layout">
+    <section class="panel controls" aria-label="Controls">
+      <div class="control-group">
+        <label>1. Upload Art</label>
+        <div id="dropzone" class="dropzone">
+          <input type="file" id="fileInput" accept="image/png,image/jpeg" hidden>
+          <p>Drop a PNG or JPG here, or <button type="button" id="browseBtn" class="link-btn">browse</button></p>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label>2. Fabric Type</label>
+        <div class="fabric-picker" role="radiogroup">
+          <button type="button" class="fabric-btn active" data-fabric="dark">Dark Shirt</button>
+          <button type="button" class="fabric-btn" data-fabric="light">Light Shirt</button>
+          <button type="button" class="fabric-btn" data-fabric="color">Color Shirt</button>
+        </div>
+        <p class="hint" id="fabricHint">Dark fabric: generates a color halftone layer plus a choked white underbase.</p>
+      </div>
+
+      <div class="control-group">
+        <label for="lpi">Screen Ruling — <span id="lpiVal">35</span> LPI</label>
+        <input type="range" id="lpi" min="15" max="55" value="35" step="1">
+      </div>
+
+      <div class="control-group">
+        <label for="angle">Screen Angle — <span id="angleVal">22.5</span>°</label>
+        <input type="range" id="angle" min="0" max="90" value="22.5" step="0.5">
+      </div>
+
+      <div class="control-group">
+        <label for="inkCap">Max Ink Coverage — <span id="inkCapVal">85</span>%</label>
+        <input type="range" id="inkCap" min="40" max="100" value="85" step="1">
+        <p class="hint">Lower this to knock out heavy solid-ink areas and keep the print soft.</p>
+      </div>
+
+      <div class="control-group" id="chokeGroup">
+        <label for="choke">Underbase Choke — <span id="chokeVal">2</span>px</label>
+        <input type="range" id="choke" min="0" max="6" value="2" step="1">
+        <p class="hint">Shrinks the white underbase slightly so it doesn't peek out past the color layer.</p>
+      </div>
+
+      <button type="button" id="processBtn" class="primary-btn" disabled>Generate Halftone</button>
+      <p id="status" class="status" aria-live="polite"></p>
+    </section>
+
+    <section class="panel preview" aria-label="Preview">
+      <div id="compareWrap" class="compare-wrap">
+        <canvas id="originalCanvas"></canvas>
+        <canvas id="processedCanvas"></canvas>
+        <div id="compareHandle" class="compare-handle"></div>
+        <input type="range" id="compareSlider" min="0" max="100" value="50" class="compare-slider" aria-label="Compare original and halftone">
+        <p id="placeholderText" class="placeholder-text">Upload artwork to see the before / after halftone comparison here.</p>
+      </div>
+      <div class="downloads">
+        <button type="button" id="downloadColor" class="secondary-btn" disabled>Download Color Layer PNG</button>
+        <button type="button" id="downloadUnderbase" class="secondary-btn" disabled>Download White Underbase PNG</button>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
