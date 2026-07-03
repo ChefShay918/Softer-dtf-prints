@@ -18,19 +18,25 @@ Then open the printed local URL in a browser.
 
 ## What it does
 
-1. **Upload** a PNG or JPG.
-2. **Pick a fabric type** — Dark, Light, or Color. Dark/Color also generate a
+1. **Upload** a PNG or JPG. If the file doesn't already have a transparent
+   background (a flattened JPG, a design on a solid white/color mat, etc.),
+   auto-remove-background is on by default and knocks out the background
+   before halftoning, so only the art gets converted to dots.
+2. **Pick a style preset** (optional) — Soft Realistic DTF, Heavy Knockout
+   Soft Feel, Vintage Halftone, or High Contrast Graphic — as a tuned
+   starting point for the sliders below.
+3. **Pick a fabric type** — Dark, Light, or Color. Dark/Color also generate a
    white underbase; Light skips it.
-3. **Pick an export resolution** — 300 / 400 / 450 / 600 DPI. Raising this
+4. **Pick an export resolution** — 300 / 400 / 450 / 600 DPI. Raising this
    re-renders the working canvas at proportionally more pixels and recomputes
    the halftone cell size as `DPI / LPI` (the standard screen-ruling
    relationship), so the dot pattern stays physically accurate at the new
    resolution.
-4. **Tune the screen** — LPI (screen ruling), angle, max ink coverage (caps
+5. **Tune the screen** — LPI (screen ruling), angle, max ink coverage (caps
    how solid heavy areas get), and underbase choke (shrinks the underbase a
    few pixels so it doesn't peek past the color layer).
-5. **Compare** the original vs. the halftone output with the drag slider.
-6. **Download** the color halftone layer and white underbase as separate
+6. **Compare** the original vs. the halftone output with the drag slider.
+7. **Download** the color halftone layer and white underbase as separate
    transparent PNGs, ready for a RIP or transfer workflow. Each exported PNG
    is tagged with a real `pHYs` DPI chunk matching the selected export
    resolution, so opening it in Photoshop or a RIP shows the correct DPI

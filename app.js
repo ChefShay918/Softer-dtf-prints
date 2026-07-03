@@ -5,6 +5,9 @@
   const presetBtns = document.querySelectorAll('.preset-btn');
   const fabricBtns = document.querySelectorAll('.fabric-btn');
   const fabricHint = document.getElementById('fabricHint');
+  const removeBgInput = document.getElementById('removeBg');
+  const bgToleranceInput = document.getElementById('bgTolerance');
+  const bgToleranceVal = document.getElementById('bgToleranceVal');
   const dpiInput = document.getElementById('dpi');
   const lpiInput = document.getElementById('lpi');
   const lpiVal = document.getElementById('lpiVal');
@@ -93,6 +96,14 @@
     if (state.img) rebuildFromImage();
   });
 
+  removeBgInput.addEventListener('change', () => {
+    if (state.img) rebuildFromImage();
+  });
+  bgToleranceInput.addEventListener('input', () => {
+    bgToleranceVal.textContent = bgToleranceInput.value;
+    if (state.img) rebuildFromImage();
+  });
+
   browseBtn.addEventListener('click', () => fileInput.click());
   dropzone.addEventListener('click', (e) => {
     if (e.target !== browseBtn) fileInput.click();
@@ -172,7 +183,133 @@
     octx.clearRect(0, 0, w, h);
     octx.drawImage(img, 0, 0, w, h);
 
+    if (removeBgInput.checked) {
+      const imageData = octx.getImageData(0, 0, w, h);
+      const tolerance = Number(bgToleranceInput.value);
+      if (removeBackground(imageData, w, h, tolerance)) {
+        octx.putImageData(imageData, 0, 0);
+      }
+    }
+
     if (state.hasImage) runProcess();
+  }
+
+  // Samples opaque border pixels to find the background color. Uses a
+  // per-channel median rather than a mean so a corner glare, shadow, or a
+  // few noisy pixels can't drag the reference color off — a plain average
+  // is exactly what lets a speckled/gradient background survive removal.
+  function detectBackgroundColor(data, w, h) {
+    const rs = [], gs = [], bs = [];
+    const step = Math.max(1, Math.floor(Math.min(w, h) / 200));
+
+    function sample(x, y) {
+      const idx = (y * w + x) * 4;
+      if (data[idx + 3] < 200) return;
+      rs.push(data[idx]);
+      gs.push(data[idx + 1]);
+      bs.push(data[idx + 2]);
+    }
+
+    for (let x = 0; x < w; x += step) {
+      sample(x, 0);
+      sample(x, h - 1);
+    }
+    for (let y = 0; y < h; y += step) {
+      sample(0, y);
+      sample(w - 1, y);
+    }
+
+    if (rs.length === 0) return null;
+    const median = (arr) => {
+      arr.sort((a, b) => a - b);
+      return arr[Math.floor(arr.length / 2)];
+    };
+    return [median(rs), median(gs), median(bs)];
+  }
+
+  function colorDistance(r, g, b, bgR, bgG, bgB) {
+    const dr = r - bgR, dg = g - bgG, db = b - bgB;
+    return Math.sqrt(dr * dr + dg * dg + db * db);
+  }
+
+  // Removes a solid/near-solid background, then cleans up the two artifacts
+  // a plain chroma-key always leaves behind: a ring of half-blended,
+  // anti-aliased edge pixels the strict threshold missed (defringe), and
+  // isolated single-pixel noise specks from JPEG compression (despeckle).
+  function removeBackground(imageData, w, h, tolerancePct) {
+    const data = imageData.data;
+    const bg = detectBackgroundColor(data, w, h);
+    if (!bg) return false;
+    const [bgR, bgG, bgB] = bg;
+    const maxDist = Math.sqrt(255 * 255 * 3);
+    const threshold = (tolerancePct / 100) * maxDist;
+
+    for (let p = 0; p < w * h; p++) {
+      const idx = p * 4;
+      if (data[idx + 3] === 0) continue;
+      const dist = colorDistance(data[idx], data[idx + 1], data[idx + 2], bgR, bgG, bgB);
+      if (dist <= threshold) data[idx + 3] = 0;
+    }
+
+    defringe(data, w, h, bgR, bgG, bgB, threshold);
+    despeckle(data, w, h);
+    return true;
+  }
+
+  // Any surviving opaque pixel that touches a transparent one is an edge
+  // pixel by definition. If it's also within a wider tolerance of the
+  // background color, it's a blended fringe pixel rather than real ink —
+  // knock it out too. Iterated a couple of passes since anti-aliasing can
+  // blend across 2px.
+  function defringe(data, w, h, bgR, bgG, bgB, threshold) {
+    const wideThreshold = threshold * 1.6;
+    for (let pass = 0; pass < 2; pass++) {
+      const toClear = [];
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const idx = (y * w + x) * 4;
+          if (data[idx + 3] === 0) continue;
+          let touchesTransparent = false;
+          for (let dy = -1; dy <= 1 && !touchesTransparent; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              if (dx === 0 && dy === 0) continue;
+              const nx = x + dx, ny = y + dy;
+              if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+              if (data[(ny * w + nx) * 4 + 3] === 0) { touchesTransparent = true; break; }
+            }
+          }
+          if (!touchesTransparent) continue;
+          const dist = colorDistance(data[idx], data[idx + 1], data[idx + 2], bgR, bgG, bgB);
+          if (dist <= wideThreshold) toClear.push(idx);
+        }
+      }
+      if (toClear.length === 0) break;
+      for (const idx of toClear) data[idx + 3] = 0;
+    }
+  }
+
+  // Removes single opaque pixels fully surrounded by transparency — the
+  // salt-and-pepper noise a chroma-key leaves in an otherwise-cleared
+  // background from JPEG compression artifacts.
+  function despeckle(data, w, h) {
+    const toClear = [];
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const idx = (y * w + x) * 4;
+        if (data[idx + 3] === 0) continue;
+        let hasOpaqueNeighbor = false;
+        for (let dy = -1; dy <= 1 && !hasOpaqueNeighbor; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const nx = x + dx, ny = y + dy;
+            if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+            if (data[(ny * w + nx) * 4 + 3] > 0) { hasOpaqueNeighbor = true; break; }
+          }
+        }
+        if (!hasOpaqueNeighbor) toClear.push(idx);
+      }
+    }
+    for (const idx of toClear) data[idx + 3] = 0;
   }
 
   function getPixel(data, w, h, x, y) {

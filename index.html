@@ -24,6 +24,18 @@
       </div>
 
       <div class="control-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="removeBg" checked>
+          Auto-remove background
+        </label>
+        <p class="hint">Knocks out a solid background (white, colored, or a photographed mat) so only the art gets halftoned. Turn this off if your file already has a transparent background.</p>
+        <div id="bgToleranceRow">
+          <label for="bgTolerance">Background Tolerance — <span id="bgToleranceVal">30</span></label>
+          <input type="range" id="bgTolerance" min="0" max="100" value="30" step="1">
+        </div>
+      </div>
+
+      <div class="control-group">
         <label>2. Style Preset</label>
         <div class="preset-list" role="radiogroup">
           <button type="button" class="preset-btn" data-preset="soft-realistic">
