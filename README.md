@@ -1,5 +1,7 @@
 # Softer DTF Prints — Without Photoshop
 
+Live at: https://chefshay918.github.io/Softer-dtf-prints/
+
 A single-page, no-build-step browser tool for DTF/DTG prepress: upload art, knock
 down heavy solid-ink areas, and generate a press-ready AM-screen halftone
 separation plus a choked white underbase — entirely client-side.
