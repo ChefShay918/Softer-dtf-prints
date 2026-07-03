@@ -2,6 +2,7 @@
   const fileInput = document.getElementById('fileInput');
   const browseBtn = document.getElementById('browseBtn');
   const dropzone = document.getElementById('dropzone');
+  const presetBtns = document.querySelectorAll('.preset-btn');
   const fabricBtns = document.querySelectorAll('.fabric-btn');
   const fabricHint = document.getElementById('fabricHint');
   const dpiInput = document.getElementById('dpi');
@@ -50,9 +51,36 @@
     btn.addEventListener('click', () => setFabric(btn.dataset.fabric));
   });
 
+  const PRESETS = {
+    'soft-realistic': { lpi: 45, angle: 22.5, inkCap: 75, choke: 2 },
+    'heavy-knockout': { lpi: 18, angle: 22.5, inkCap: 45, choke: 3 },
+    'vintage-halftone': { lpi: 24, angle: 45, inkCap: 88, choke: 1 },
+    'high-contrast': { lpi: 55, angle: 45, inkCap: 100, choke: 0 }
+  };
+
+  function applyPreset(name) {
+    const preset = PRESETS[name];
+    if (!preset) return;
+    presetBtns.forEach(btn => btn.classList.toggle('active', btn.dataset.preset === name));
+    lpiInput.value = preset.lpi;
+    angleInput.value = preset.angle;
+    inkCapInput.value = preset.inkCap;
+    chokeInput.value = preset.choke;
+    lpiVal.textContent = preset.lpi;
+    angleVal.textContent = preset.angle;
+    inkCapVal.textContent = preset.inkCap;
+    chokeVal.textContent = preset.choke;
+    if (state.hasImage) runProcess();
+  }
+
+  presetBtns.forEach(btn => {
+    btn.addEventListener('click', () => applyPreset(btn.dataset.preset));
+  });
+
   function syncSliderLabel(input, label, formatter) {
     input.addEventListener('input', () => {
       label.textContent = formatter ? formatter(input.value) : input.value;
+      presetBtns.forEach(btn => btn.classList.remove('active'));
       if (state.hasImage) runProcess();
     });
   }
