@@ -130,10 +130,28 @@
 
   processBtn.addEventListener('click', () => runProcess());
 
+  const MAX_FILE_SIZE_BYTES = 30 * 1024 * 1024; // 30MB — generous for a design file, cheap to sanity-check
+
   function loadFile(file) {
+    if (!file.type.startsWith('image/')) {
+      status.textContent = `"${file.name}" isn't an image file. Please upload a PNG or JPG.`;
+      return;
+    }
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      status.textContent = `"${file.name}" is too large (${Math.round(file.size / 1024 / 1024)}MB). Please upload a file under 30MB.`;
+      return;
+    }
+
+    status.textContent = 'Loading…';
     const reader = new FileReader();
+    reader.onerror = () => {
+      status.textContent = `Couldn't read "${file.name}" — the file may be corrupted. Please try again.`;
+    };
     reader.onload = (e) => {
       const img = new Image();
+      img.onerror = () => {
+        status.textContent = `"${file.name}" doesn't look like a valid image. Please try a different file.`;
+      };
       img.onload = () => {
         state.img = img;
         initFromImage();
@@ -410,11 +428,18 @@
     underbaseCanvas.getContext('2d').putImageData(out, 0, 0);
   }
 
+  let processGeneration = 0;
+
   function runProcess() {
     if (!state.hasImage) return;
+    const myGeneration = ++processGeneration;
     status.textContent = 'Processing…';
     processBtn.disabled = true;
     requestAnimationFrame(() => {
+      // If the user dragged a slider again before this frame ran, a newer
+      // call already superseded it — skip the redundant work instead of
+      // reprocessing once per input event.
+      if (myGeneration !== processGeneration) return;
       const w = originalCanvas.width;
       const h = originalCanvas.height;
       const octx = originalCanvas.getContext('2d');
@@ -470,8 +495,17 @@
 
   // Inserts a pHYs chunk right after IHDR so the exported PNG carries real
   // DPI metadata (Photoshop / RIP software reads this instead of assuming 72 DPI).
+  // IHDR must be the first chunk in any valid PNG (spec-guaranteed), but we
+  // verify it rather than assume it, so a malformed input fails safe instead
+  // of producing a corrupted file.
   function withDpiMetadata(pngBytes, dpi) {
     const ihdrEnd = 8 + 4 + 4 + 13 + 4; // signature + IHDR (length+type+data+crc)
+    const isPng = pngBytes[0] === 0x89 && pngBytes[1] === 0x50 && pngBytes[2] === 0x4e && pngBytes[3] === 0x47;
+    const hasIhdr = pngBytes[12] === 0x49 && pngBytes[13] === 0x48 && pngBytes[14] === 0x44 && pngBytes[15] === 0x52;
+    if (!isPng || !hasIhdr || pngBytes.length < ihdrEnd) {
+      return pngBytes; // not the PNG structure we expect — skip tagging rather than risk corrupting it
+    }
+
     const before = pngBytes.slice(0, ihdrEnd);
     const after = pngBytes.slice(ihdrEnd);
 
@@ -498,9 +532,18 @@
   function downloadCanvas(canvas, baseName) {
     const dpi = Number(dpiInput.value);
     canvas.toBlob(async (blob) => {
-      const buf = new Uint8Array(await blob.arrayBuffer());
-      const tagged = withDpiMetadata(buf, dpi);
-      const taggedBlob = new Blob([tagged], { type: 'image/png' });
+      if (!blob) {
+        status.textContent = 'Export failed — please try again.';
+        return;
+      }
+      let taggedBlob = blob;
+      try {
+        const buf = new Uint8Array(await blob.arrayBuffer());
+        taggedBlob = new Blob([withDpiMetadata(buf, dpi)], { type: 'image/png' });
+      } catch {
+        // Fall back to the untagged PNG rather than failing the download outright —
+        // it'll just default to 72 DPI metadata instead of the selected export DPI.
+      }
       const url = URL.createObjectURL(taggedBlob);
       const a = document.createElement('a');
       a.href = url;

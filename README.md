@@ -69,7 +69,26 @@ synthetic test image and asserts that:
 doubles the working canvas size versus 300 DPI, and that the downloaded PNG's
 embedded `pHYs` chunk reads back as exactly 600 DPI.
 
+`test/verify-presets.js`, `test/verify-bg-removal.js`, and
+`test/verify-bg-defringe.js` cover the style presets and the background
+removal/defringe/despeckle pipeline. `test/verify-error-handling.js` covers
+the upload guardrails: a non-image file, a corrupted image, and an
+oversized file all get a clear on-screen message instead of hanging or
+throwing.
+
 ```bash
-node test/verify.js
-node test/verify-dpi.js
+for f in test/*.js; do node "$f"; done
 ```
+
+## Upload guardrails
+
+- Files must have an `image/*` MIME type (checked before reading — the
+  file picker's `accept` filter only applies to the picker dialog, not
+  drag-and-drop).
+- Files over 30MB are rejected with a friendly message rather than risking
+  a hung tab.
+- `FileReader` and `Image` load failures (corrupted files, unsupported
+  formats) surface a status message instead of failing silently.
+- PNG export always checks the actual byte structure before injecting DPI
+  metadata; if it's ever not what's expected, the original file downloads
+  untagged rather than being corrupted.
